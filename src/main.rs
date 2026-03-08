@@ -91,14 +91,14 @@ unsafe fn HardFault(_ef: &ExceptionFrame) -> ! {
 }
 
 #[allow(non_snake_case)]
-#[no_mangle]
+#[unsafe(no_mangle)]
 fn vApplicationMallocFailedHook() {
     asm::bkpt();
     loop {}
 }
 
 #[allow(non_snake_case)]
-#[no_mangle]
+#[unsafe(no_mangle)]
 fn vApplicationStackOverflowHook(_pxTask: FreeRtosTaskHandle, _pcTaskName: FreeRtosCharPtr) {
     asm::bkpt();
 }
