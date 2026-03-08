@@ -1,6 +1,10 @@
-# Project template for rp2040-hal
+# Project template for rp2040-hal with FreeRTOS
 
-This template is intended as a starting point for developing your own firmware based on the rp2040-hal.
+This template is intended as a starting point for developing your own firmware based on the rp2040-hal with **FreeRTOS** as the real-time operating system.
+
+It uses my [fork](https://github.com/shivrajora/FreeRTOS-rust) of the [`freertos-rust`](https://crates.io/crates/freertos-rust) to integrate the FreeRTOS kernel into a Rust project, compiling the FreeRTOS C source via a build script. My fork adds support for Cortex M0+ cores to support RP2040.
+
+The example `main.rs` demonstrates a blinky application running inside a FreeRTOS task using `Task::new()` and `FreeRtosUtils::start_scheduler()`.
 
 It includes all of the `knurling-rs` tooling as showcased in https://github.com/knurling-rs/app-template (`defmt`, `defmt-rtt`, `panic-probe`, `flip-link`) to make development as easy as possible.
 
@@ -16,6 +20,7 @@ If you aren't using a debugger (or want to use other debugging configurations), 
   
   <summary><h2 style="display: inline-block">Table of Contents</h2></summary>
   <ol>
+    <li><a href="#freertos-integration">FreeRTOS Integration</a></li>
     <li><a href="#quickstart">Quickstart</a></li>
     <li><a href="#markdown-header-requirements">Requirements</a></li>
     <li><a href="#installation-of-development-dependencies">Installation of development dependencies</a></li>
@@ -30,6 +35,51 @@ If you aren't using a debugger (or want to use other debugging configurations), 
     <li><a href="#license">License</a></li>
     <li><a href="#contact">Contact</a></li>
   </ol>
+</details>
+
+<!-- FreeRTOS Integration -->
+<details open="open">
+  <summary><h2 style="display: inline-block" id="freertos-integration">FreeRTOS Integration</h2></summary>
+
+This template integrates [FreeRTOS](https://www.freertos.org/) into a Rust embedded project for the RP2040 using the [`freertos-rust`](https://github.com/shivrajora/FreeRTOS-rust) crate.
+
+### How it works
+
+- The FreeRTOS C kernel sources are compiled at build time via a `build.rs` script using [`freertos-cargo-build`](https://github.com/shivrajora/FreeRTOS-rust).
+- The [`freertos-rust`](https://github.com/shivrajora/FreeRTOS-rust) crate provides safe Rust bindings to the FreeRTOS API.
+- `FreeRtosAllocator` is registered as the global allocator, enabling heap allocation backed by FreeRTOS's heap implementation.
+
+### Creating a FreeRTOS task
+
+Wrap your application logic in a task and start the scheduler:
+
+```rust
+use freertos_rust::*;
+
+#[entry]
+fn main() -> ! {
+    Task::new()
+        .name("app")
+        .stack_size(1000)
+        .start(move |_| {
+            app_main();
+        })
+        .unwrap();
+    FreeRtosUtils::start_scheduler();
+}
+```
+
+Use `CurrentTask::delay(Duration::ms(500))` instead of busy-waiting to yield the CPU to other tasks during delays.
+
+### Dependencies
+
+The FreeRTOS crates are currently sourced from a fork pending upstreaming:
+
+```toml
+freertos-rust = { git = "https://github.com/shivrajora/FreeRTOS-rust.git", branch = "master" }
+freertos-cargo-build = { git = "https://github.com/shivrajora/FreeRTOS-rust.git", branch = "master" }
+```
+
 </details>
 
 <!-- Quickstart -->
