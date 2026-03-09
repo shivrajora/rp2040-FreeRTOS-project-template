@@ -107,7 +107,7 @@ See the rest of the README for instructions on setting up different hardware or 
 1. Start your project by copying this template:
 
    ```
-   cargo generate rp-rs/rp2040-project-template
+   cargo generate --git https://github.com/shivrajora/rp2040-FreeRTOS-project-template
    ```
 
 1. Install the cross-compilation toolchain:
@@ -183,7 +183,7 @@ If you get the error ``binary `cargo-embed` already exists`` during installation
 ### Using `cargo-generate`
 
 ```sh
-cargo generate --git https://github.com/rp-rs/rp2040-project-template
+cargo generate --git https://github.com/shivrajora/rp2040-FreeRTOS-project-template
 ```
 
 Follow the wizard 🪄 and enjoy your new project.
@@ -362,7 +362,7 @@ Some of the options for your `runner` are listed below:
 NOTE These packages are under active development. As such, it is likely to
 remain volatile until a 1.0.0 release.
 
-See the [open issues](https://github.com/rp-rs/rp2040-project-template/issues) for a list of
+See the [open issues](https://github.com/shivrajora/rp2040-FreeRTOS-project-template/issues) for a list of
 proposed features (and known issues).
 
 ## Contributing
@@ -376,7 +376,7 @@ The steps are:
 3. Make some changes to the code or documentation.
 4. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
 5. Push to the Feature Branch (`git push origin feature/AmazingFeature`)
-6. Create a [New Pull Request](https://github.com/rp-rs/rp2040-project-template/pulls)
+6. Create a [New Pull Request](https://github.com/shivrajora/rp2040-FreeRTOS-project-template/pulls)
 7. An admin will review the Pull Request and discuss any changes that may be required.
 8. Once everyone is happy, the Pull Request can be merged by an admin, and your work is part of our project!
 
@@ -400,5 +400,5 @@ under these terms.
 
 ## Contact
 
-Raise an issue: [https://github.com/rp-rs/rp2040-project-template/issues](https://github.com/rp-rs/rp2040-project-template/issues)
-Chat to us on Matrix: [#rp-rs:matrix.org](https://matrix.to/#/#rp-rs:matrix.org)
+Raise an issue: [https://github.com/shivrajora/rp2040-FreeRTOS-project-template/issues](https://github.com/shivrajora/rp2040-FreeRTOS-project-template/issues)
+
