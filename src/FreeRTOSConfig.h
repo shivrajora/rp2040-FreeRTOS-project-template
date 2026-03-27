@@ -49,6 +49,18 @@
 /* Message buffers */
 #define configMESSAGE_BUFFER_LENGTH_TYPE        size_t
 
+/* SMP: dual-core RP2040 (Cortex-M0+ × 2) */
+#define configNUMBER_OF_CORES                   2
+#define configUSE_PASSIVE_IDLE_HOOK             0
+#define configSUPPORT_PICO_SYNC_INTEROP         1
+#define configTICK_CORE                         0
+#define configUSE_CORE_AFFINITY                 1
+/* Hardware spinlock IDs reserved for FreeRTOS SMP (pico-sdk PICO_SPINLOCK_ID_OS1/OS2) */
+#define configSMP_SPINLOCK_0                    26
+#define configSMP_SPINLOCK_1                    27
+/* Disable the runtime vector-table check; we use linker aliases instead */
+#define configCHECK_HANDLER_INSTALLATION        0
+
 /* Optional API functions */
 #define INCLUDE_vTaskDelay                      1
 #define INCLUDE_vTaskDelayUntil                 1
@@ -57,5 +69,6 @@
 #define INCLUDE_xTaskGetCurrentTaskHandle       1
 #define INCLUDE_uxTaskGetStackHighWaterMark     1
 #define INCLUDE_xTaskGetSchedulerState          1
+#define INCLUDE_xTimerPendFunctionCall          1
 
 #endif /* FREERTOS_CONFIG_H */

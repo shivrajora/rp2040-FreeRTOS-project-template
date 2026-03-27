@@ -28,11 +28,24 @@ fn main() {
     // Path to FreeRTOS kernel or set ENV "FREERTOS_SRC" instead
     b.freertos("third_party/FreeRTOS");
     b.freertos_config("src"); // Location of `FreeRTOSConfig.h`
-    b.freertos_port("GCC/ARM_CM0"); // Port dir relativ to 'FreeRTOS-Kernel/portable'
+    // RP2040 SMP port: ThirdParty/GCC/RP2040 (Cortex-M0+ dual-core, uses SIO FIFO for vYieldCore)
+    b.freertos_port("ThirdParty/GCC/RP2040");
     b.heap("heap_4.c"); // Set the heap_?.c allocator to use from
-    // 'FreeRTOS-Kernel/portable/MemMang' (Default: heap_4.c)
+                        // 'FreeRTOS-Kernel/portable/MemMang' (Default: heap_4.c)
 
-    // b.get_cc().file("More.c");   // Optional additional C-Code to be compiled
+    // Inject pico-sdk shim (direct register access, no real pico-sdk needed)
+    b.add_build_file("src/port/pico_shim_rp2040.c");
+    // Expose stub headers that shadow pico-sdk's pico.h, hardware/*.h, pico/multicore.h
+    b.get_cc().include("src/port");
+    // RP2040 port stores portmacro.h in include/ — add it explicitly
+    b.get_cc()
+        .include("third_party/FreeRTOS/portable/ThirdParty/GCC/RP2040/include");
+    // Preprocessor flags required by the RP2040 FreeRTOS port
+    b.get_cc().define("LIB_PICO_MULTICORE", "1");
+    b.get_cc().define("LIB_PICO_SYNC", "0");
+    b.get_cc().define("LIB_PICO_TIME", "0");
+    b.get_cc()
+        .define("configUSE_DYNAMIC_EXCEPTION_HANDLERS", "0");
 
     b.compile().unwrap_or_else(|e| panic!("{}", e.to_string()));
 
@@ -43,20 +56,23 @@ fn main() {
     println!("cargo:rerun-if-changed=memory.x");
     println!("cargo:rerun-if-changed=src/FreeRTOSConfig.h");
 
-    // This FreeRTOS-Kernel port (Development Branch) uses CMSIS-style handler
-    // names (SVC_Handler, PendSV_Handler, SysTick_Handler).  cortex-m-rt's
-    // linker script uses PROVIDE(SVCall = DefaultHandler) etc.  A strong
-    // assignment in a linker script fragment overrides PROVIDE(), wiring the
-    // cortex-m-rt vector-table slots directly to the FreeRTOS naked-asm
-    // handlers.  -u forces portasm.o out of libfreertos.a so the symbols exist.
-    for sym in &["SVC_Handler", "PendSV_Handler", "SysTick_Handler"] {
+    // The RP2040 FreeRTOS port with configUSE_DYNAMIC_EXCEPTION_HANDLERS=0
+    // renames the CMSIS handlers to pico-sdk isr_* names:
+    //   vPortSVCHandler   → isr_svcall
+    //   xPortPendSVHandler → isr_pendsv
+    //   xPortSysTickHandler → isr_systick
+    // cortex-m-rt's linker script uses PROVIDE(SVCall = DefaultHandler) etc.
+    // A strong assignment overrides PROVIDE(), wiring the vector-table slots
+    // directly to the FreeRTOS naked-asm handlers.
+    // -u forces portasm.o out of libfreertos.a so the symbols exist.
+    for sym in &["isr_svcall", "isr_pendsv", "isr_systick"] {
         println!("cargo:rustc-link-arg=-u");
         println!("cargo:rustc-link-arg={sym}");
     }
     let vectors_ld = out.join("freertos-vectors.x");
     std::fs::write(
         &vectors_ld,
-        b"SVCall  = SVC_Handler;\nPendSV  = PendSV_Handler;\nSysTick = SysTick_Handler;\n",
+        b"SVCall  = isr_svcall;\nPendSV  = isr_pendsv;\nSysTick = isr_systick;\n",
     )
     .unwrap();
     println!("cargo:rustc-link-arg=-T{}", vectors_ld.display());

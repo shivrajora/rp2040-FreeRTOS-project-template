@@ -1,19 +1,19 @@
-# Project template for rp2040-hal with FreeRTOS
+# Project template for rp2040-hal with FreeRTOS SMP
 
-This template is intended as a starting point for developing your own firmware based on the rp2040-hal with **FreeRTOS** as the real-time operating system.
+This template is a starting point for developing firmware based on the rp2040-hal with **FreeRTOS** as the real-time operating system, running on **both Cortex-M0+ cores** of the RP2040.
 
-It uses my [fork](https://github.com/shivrajora/FreeRTOS-rust) of the [`freertos-rust`](https://crates.io/crates/freertos-rust) to integrate the FreeRTOS kernel into a Rust project, compiling the FreeRTOS C source via a build script. My fork adds support for Cortex M0+ cores to support RP2040.
+It uses my [fork](https://github.com/shivrajora/FreeRTOS-rust) of the [`freertos-rust`](https://crates.io/crates/freertos-rust) crate to integrate the FreeRTOS kernel into a Rust project, compiling the FreeRTOS C source via a build script. The fork adds SMP support and core affinity APIs for the RP2040.
 
-The example `main.rs` demonstrates a blinky application running inside a FreeRTOS task using `Task::new()` and `FreeRtosUtils::start_scheduler()`.
+The example `main.rs` demonstrates a blinky application running inside a FreeRTOS task using `Task::new()` and `FreeRtosUtils::start_scheduler()`. An optional **SMP demo** mode (enabled via the `smp-demo` feature flag) creates two tasks pinned to separate cores to showcase dual-core scheduling — see the [Feature flags](#feature-flags) section.
 
 It includes all of the `knurling-rs` tooling as showcased in https://github.com/knurling-rs/app-template (`defmt`, `defmt-rtt`, `panic-probe`, `flip-link`) to make development as easy as possible.
 
-`probe-rs` is configured as the default runner, so you can start your program as easy as
+`probe-rs` is configured as the default runner, so you can start your program as easily as
 ```sh
 cargo run --release
 ```
 
-If you aren't using a debugger (or want to use other debugging configurations), check out [alternative runners](#alternative-runners) for other options
+If you aren't using a debugger (or want to use other debugging configurations), check out [alternative runners](#alternative-runners) for other options.
 
 <!-- TABLE OF CONTENTS -->
 <details open="open">
@@ -21,6 +21,7 @@ If you aren't using a debugger (or want to use other debugging configurations), 
   <summary><h2 style="display: inline-block">Table of Contents</h2></summary>
   <ol>
     <li><a href="#freertos-integration">FreeRTOS Integration</a></li>
+    <li><a href="#smp-dual-core-support">SMP Dual-Core Support</a></li>
     <li><a href="#quickstart">Quickstart</a></li>
     <li><a href="#markdown-header-requirements">Requirements</a></li>
     <li><a href="#installation-of-development-dependencies">Installation of development dependencies</a></li>
@@ -48,6 +49,8 @@ This template integrates [FreeRTOS](https://www.freertos.org/) into a Rust embed
 - The FreeRTOS C kernel sources are compiled at build time via a `build.rs` script using [`freertos-cargo-build`](https://github.com/shivrajora/FreeRTOS-rust).
 - The [`freertos-rust`](https://github.com/shivrajora/FreeRTOS-rust) crate provides safe Rust bindings to the FreeRTOS API.
 - `FreeRtosAllocator` is registered as the global allocator, enabling heap allocation backed by FreeRTOS's heap implementation.
+- The **RP2040-specific FreeRTOS port** (`ThirdParty/GCC/RP2040`) is used instead of the generic ARM Cortex-M0 port, enabling full SMP support across both cores.
+- A minimal **pico-sdk shim** (`src/port/`) provides direct register access implementations of the pico-sdk C functions required by the port — no pico-sdk dependency is needed.
 
 ### Creating a FreeRTOS task
 
@@ -79,6 +82,72 @@ The FreeRTOS crates are currently sourced from a fork pending upstreaming:
 freertos-rust = { git = "https://github.com/shivrajora/FreeRTOS-rust.git", branch = "master" }
 freertos-cargo-build = { git = "https://github.com/shivrajora/FreeRTOS-rust.git", branch = "master" }
 ```
+
+</details>
+
+<!-- SMP Dual-Core Support -->
+<details open="open">
+  <summary><h2 style="display: inline-block" id="smp-dual-core-support">SMP Dual-Core Support</h2></summary>
+
+The RP2040 has two Cortex-M0+ cores. This template runs FreeRTOS in **SMP mode** with both cores active, using the RP2040-specific FreeRTOS port.
+
+### What's different from a single-core setup
+
+| | Single-core (ARM_CM0) | This template (RP2040 SMP) |
+|---|---|---|
+| FreeRTOS port | `GCC/ARM_CM0` | `ThirdParty/GCC/RP2040` |
+| Active cores | 1 | 2 |
+| Cross-core yield | N/A | SIO FIFO (`vYieldCore`) |
+| Hardware spinlocks | N/A | IDs 26 & 27 (SIO) |
+| Core affinity | N/A | Per-task bitmask |
+| Exception handler names | `SVC_Handler` etc. | `isr_svcall` etc. |
+
+### FreeRTOSConfig.h SMP settings
+
+```c
+#define configNUMBER_OF_CORES       2
+#define configTICK_CORE             0   // core 0 drives the tick
+#define configUSE_CORE_AFFINITY     1
+#define configSMP_SPINLOCK_0        26  // hardware spinlock for SMP critical sections
+#define configSMP_SPINLOCK_1        27
+```
+
+### Pinning tasks to a specific core
+
+Use the `core_affinity` builder method to pin a task to one or both cores (bitmask: `0b01` = core 0, `0b10` = core 1, `0b11` = either):
+
+```rust
+// Run only on core 0
+Task::new()
+    .name("worker")
+    .stack_size(1000)
+    .core_affinity(0b01)
+    .start(move |_| { /* ... */ })
+    .unwrap();
+
+// Run only on core 1
+Task::new()
+    .name("isr-handler")
+    .stack_size(512)
+    .core_affinity(0b10)
+    .start(move |_| { /* ... */ })
+    .unwrap();
+```
+
+Without a `core_affinity` call, FreeRTOS distributes tasks across both cores automatically.
+
+### pico-sdk shim
+
+The RP2040 port depends on several pico-sdk C functions (`multicore_launch_core1`, `spin_lock_*`, `irq_set_*`, `clock_get_hz`, etc.). Rather than linking against the full pico-sdk, this template provides lightweight shim implementations in `src/port/`:
+
+| File | Purpose |
+|------|---------|
+| `src/port/pico_shim.h` | SIO register layout, spinlock ops, NVIC helpers, sync interop stubs |
+| `src/port/pico_shim_rp2040.c` | FIFO-based core1 launch, RAM vector table, IRQ management, `clock_get_hz` (125 MHz) |
+| `src/port/pico.h` | Shadows pico-sdk's `pico.h`; sets `PICO_NO_RAM_VECTOR_TABLE=1` |
+| `src/port/hardware/*.h` | Stub headers for `hardware/sync.h`, `hardware/clocks.h`, `hardware/exception.h`, `hardware/irq.h` |
+| `src/port/pico/lock_core.h` | Minimal `lock_core_t` struct for sync interop |
+| `src/port/pico/multicore.h` | `multicore_*` function declarations |
 
 </details>
 
@@ -143,9 +212,13 @@ See the rest of the README for instructions on setting up different hardware or 
   
 - The standard Rust tooling (cargo, rustup) which you can install from https://rustup.rs/
 
-- Toolchain support for the cortex-m0+ processors in the rp2040 (thumbv6m-none-eabi)
+- Toolchain support for the Cortex-M0+ processors in the RP2040 (thumbv6m-none-eabi)
 
-- flip-link - this allows you to detect stack-overflows on the first core, which is the only supported target for now.
+- `arm-none-eabi-gcc` — used by `freertos-cargo-build` to cross-compile the FreeRTOS C sources
+  - macOS: `brew install --cask gcc-arm-embedded`
+  - Ubuntu: `apt-get install gcc-arm-none-eabi`
+
+- `flip-link` — detects stack overflows on both cores at runtime
 
 - (by default) A [`probe-rs` installation](https://probe.rs/docs/getting-started/installation)
 - A [`probe-rs` compatible](https://probe.rs/docs/getting-started/probe-setup) probe
@@ -166,6 +239,16 @@ rustup target install thumbv6m-none-eabi
 cargo install flip-link
 # Installs the probe-rs tools, including probe-rs run, our recommended default runner
 cargo install --locked probe-rs-tools
+```
+
+Install the ARM cross-compiler for building FreeRTOS C sources:
+
+```sh
+# macOS
+brew install --cask gcc-arm-embedded
+
+# Ubuntu / Debian
+apt-get install gcc-arm-none-eabi
 ```
 
 If you want to use picotool instead, install a [picotool binary][] for your system.
@@ -213,6 +296,11 @@ cargo run
 For a release build
 ```sh
 cargo run --release
+```
+
+To run the SMP demo (two tasks, one per core — see [Feature flags](#feature-flags)):
+```sh
+cargo run --features smp-demo
 ```
 
 If you do not specify a DEFMT_LOG level, it will be set to `debug`.
@@ -347,12 +435,53 @@ Some of the options for your `runner` are listed below:
 <details open="open">
   <summary><h2 style="display: inline-block" id="feature-flags">Feature flags</h2></summary>
 
-  There are several [feature flags in rp2040-hal](https://docs.rs/rp2040-hal/latest/rp2040_hal/#crate-features).
-  If you want to enable some of them, uncomment the `rp2040-hal` dependency in `Cargo.toml` and add the
-  desired feature flags there. For example, to enable ROM functions for f64 math using the feature `rom-v2-intrinsics`:
-  ```
-  rp2040-hal = { version="0.10", features=["rt", "critical-section-impl", "rom-v2-intrinsics"] }
-  ```
+### `smp-demo` — dual-core showcase
+
+Enable a two-task example that demonstrates FreeRTOS running on both Cortex-M0+ cores simultaneously:
+
+```sh
+cargo run --features smp-demo
+```
+
+| Task | Core | What it does |
+|------|------|--------------|
+| `led-core0` | 0 (pinned) | Blinks the LED every 500 ms |
+| `counter-core1` | 1 (pinned) | Logs a counter every 1 s |
+
+Both tasks log their actual core ID via defmt so you can confirm they are running on the expected core:
+
+```
+LED task on core0
+core1 counter: 0
+on!
+core1 counter: 1
+off!
+...
+```
+
+The tasks are pinned using the `core_affinity` builder method on `Task::new()`:
+
+```rust
+Task::new()
+    .name("led-core0")
+    .stack_size(1000)
+    .core_affinity(1 << 0)   // 0b01 = core 0 only
+    .start(move |_| app_main())
+    .unwrap();
+```
+
+Without `core_affinity`, FreeRTOS distributes tasks across both cores automatically.
+
+---
+
+### rp2040-hal feature flags
+
+There are also several [feature flags in rp2040-hal](https://docs.rs/rp2040-hal/latest/rp2040_hal/#crate-features).
+If you want to enable some of them, uncomment the `rp2040-hal` dependency in `Cargo.toml` and add the
+desired feature flags there. For example, to enable ROM functions for f64 math using the feature `rom-v2-intrinsics`:
+```
+rp2040-hal = { version="0.10", features=["rt", "critical-section-impl", "rom-v2-intrinsics"] }
+```
 </details>
 
 <!-- ROADMAP -->

@@ -1,8 +1,13 @@
 [package]
 edition = "2024"
 name = "rp2040-FreeRTOS-project-template"
-version = "0.1.0"
+version = "0.1.1"
 license = "MIT OR Apache-2.0"
+
+[features]
+# Enable a two-task SMP demo (core 0: LED blink, core 1: counter).
+# Build with: cargo build --features smp-demo
+smp-demo = []
 
 [dependencies]
 cortex-m = "0.7"

@@ -1,6 +1,22 @@
-//! Blinks the LED on a Pico board
+//! Blinks the LED on a Pico board using FreeRTOS tasks.
 //!
-//! This will blink an LED attached to GP25, which is the pin the Pico uses for the on-board LED.
+//! GP25 is the on-board LED pin on the Raspberry Pi Pico.
+//!
+//! # Modes
+//!
+//! **Default** — single FreeRTOS task on whichever core the scheduler picks:
+//! ```sh
+//! cargo run
+//! ```
+//!
+//! **SMP demo** — two tasks with explicit core affinity, demonstrating both
+//! Cortex-M0+ cores running FreeRTOS tasks simultaneously:
+//! ```sh
+//! cargo run --features smp-demo
+//! ```
+//! The LED task is pinned to core 0 and a counter task is pinned to core 1.
+//! Both tasks log their actual core ID via defmt so you can verify they are
+//! running on the expected core.
 #![no_std]
 #![no_main]
 
@@ -25,17 +41,39 @@ use bsp::hal::{clocks::init_clocks_and_plls, pac, sio::Sio, watchdog::Watchdog};
 
 #[entry]
 fn main() -> ! {
+    #[cfg(not(feature = "smp-demo"))]
     Task::new()
         .name("default")
         .stack_size(1000)
-        .start(move |_| {
-            app_main();
-        })
+        .start(move |_| app_main())
         .unwrap();
+
+    #[cfg(feature = "smp-demo")]
+    {
+        // LED blink pinned to core 0 (affinity mask = 0b01)
+        Task::new()
+            .name("led-core0")
+            .stack_size(1000)
+            .core_affinity(1 << 0)
+            .start(move |_| app_main())
+            .unwrap();
+
+        // Counter task pinned to core 1 (affinity mask = 0b10)
+        Task::new()
+            .name("counter-core1")
+            .stack_size(512)
+            .core_affinity(1 << 1)
+            .start(move |_| smp_counter_task())
+            .unwrap();
+    }
+
     FreeRtosUtils::start_scheduler();
 }
 
 fn app_main() -> ! {
+    #[cfg(feature = "smp-demo")]
+    info!("LED task on core{}", get_core_id());
+    #[cfg(not(feature = "smp-demo"))]
     info!("Program start");
     let mut pac = pac::Peripherals::take().unwrap();
     let sio = Sio::new(pac.SIO);
@@ -113,6 +151,16 @@ fn vApplicationMallocFailedHook() {
 #[unsafe(no_mangle)]
 fn vApplicationStackOverflowHook(_pxTask: FreeRtosTaskHandle, _pcTaskName: FreeRtosCharPtr) {
     asm::bkpt();
+}
+
+#[cfg(feature = "smp-demo")]
+fn smp_counter_task() -> ! {
+    let mut count: u32 = 0;
+    loop {
+        info!("core{} counter: {}", get_core_id(), count);
+        count = count.wrapping_add(1);
+        CurrentTask::delay(Duration::ms(1000));
+    }
 }
 
 // End of file
