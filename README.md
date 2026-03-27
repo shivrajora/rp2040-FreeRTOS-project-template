@@ -49,7 +49,7 @@ This template integrates [FreeRTOS](https://www.freertos.org/) into a Rust embed
 - The FreeRTOS C kernel sources are compiled at build time via a `build.rs` script using [`freertos-cargo-build`](https://github.com/shivrajora/FreeRTOS-rust).
 - The [`freertos-rust`](https://github.com/shivrajora/FreeRTOS-rust) crate provides safe Rust bindings to the FreeRTOS API.
 - `FreeRtosAllocator` is registered as the global allocator, enabling heap allocation backed by FreeRTOS's heap implementation.
-- The **RP2040-specific FreeRTOS port** (`ThirdParty/GCC/RP2040`) is used instead of the generic ARM Cortex-M0 port, enabling full SMP support across both cores.
+- The **RP2040-specific FreeRTOS port** ([`ThirdParty/GCC/RP2040`](third_party/FreeRTOS/portable/ThirdParty/GCC/RP2040)) is used instead of the generic ARM Cortex-M0 port, enabling full SMP support across both cores.
 - A minimal **pico-sdk shim** (`src/port/`) provides direct register access implementations of the pico-sdk C functions required by the port — no pico-sdk dependency is needed.
 
 ### Creating a FreeRTOS task
@@ -95,7 +95,7 @@ The RP2040 has two Cortex-M0+ cores. This template runs FreeRTOS in **SMP mode**
 
 | | Single-core (ARM_CM0) | This template (RP2040 SMP) |
 |---|---|---|
-| FreeRTOS port | `GCC/ARM_CM0` | `ThirdParty/GCC/RP2040` |
+| FreeRTOS port | `GCC/ARM_CM0` | [`ThirdParty/GCC/RP2040`](third_party/FreeRTOS/portable/ThirdParty/GCC/RP2040) |
 | Active cores | 1 | 2 |
 | Cross-core yield | N/A | SIO FIFO (`vYieldCore`) |
 | Hardware spinlocks | N/A | IDs 26 & 27 (SIO) |
